@@ -25,84 +25,52 @@ const settings: Settings = {
   ttsDefaultVoice: "en-US-DavisNeural",
 };
 
-interface GrammarEntry {
-  person?: string;
-  day?: string;
-  time?: string;
-  greeting?:string;
-  yesno?:string;
-}
 
 
-
-const grammar: { [index: string]: GrammarEntry } = {
-  yes:{yesno:"Yes"},
-  no:{yesno:"No"},
-  hello:{greeting:"Hello"},
-  vlad: { person: "Vladislav Maraev"},
-  bora: { person: "Bora Kara" }, 
-  tal: { person: "Talha Bedir" },
-  tom: { person: "Tom Södahl Bladsjö" },
-  charles: { person: "Charles" },
-  doctor:{person:"doctor"},
-  monday: { day: "Monday" },
-  tuesday: { day: "Tuesday" },
-  wednesday: { day: "Wednesday" },
-  thursday: { day: "Thursday" },
-  friday: { day: "Friday" },
-  saturday: { day: "Saturday" },
-  sunday: { day: "Sunday" },
-  today: {day:"Today"},
-  tomorrow:{day:"tomorrow"},
-  "8": { time: "08:00" },
-  "9": { time: "09:00" },
-  "10": { time: "10:00" },
-  "11": { time: "11:00" },
-  "12": { time: "12:00" },
-  "13": { time: "13:00" },
-  "14": { time: "14:00" },
-  "15": { time: "15:00" },
-};
-
-function isInGrammar(utterance: string) {
-  return utterance.toLowerCase() in grammar;
-}
+let index: int = 0;
+let fantasy_names : string[] = ["Gandalf", "Azeroth", "Voldemort", "Fëanor"];
+let utterance_names: string[] =[];
 
 
+function initialize(){
+	index=0;
+	utterance_names=[];
+	const btn =document.getElementById("names");
+	btn.innerHTML=fantasy_names[index];
+}
 
-function getPerson(utterance: string) {
-  return (grammar[utterance.toLowerCase()] || {}).person;
+//using this to match Fantasynames with utterance
+function listen_fantasy(utterance:string, confidence: number){
+	utterance_names.push(utterance);
+	let results: string ="<h3>Results</h3>";
+	for(let i:int=0; i<utterance_names.length; i++)
+	{
+		results = results+"<p>"+fantasy_names[i]+" : "+utterance_names[i]+" confidence: "+confidence +"</p>";
+		
+	}
+	document.getElementById("results").innerHTML=results;
+	index++;
+	if(index<fantasy_names.length)
+	{
+		
+		document.getElementById("names").innerHTML=fantasy_names[index];
+	}
+	else
+	{
+		document.getElementById("names").innerHTML="Done";
+	}
+	return utterance;
 }
-function getDay(utterance: string) {
-  let day: int = new Date().getDay();
-  let week: string[] = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-  if(utterance.toLowerCase()=="today")
-  {
-	  return week[day];
-  }
-  else if (utterance.toLowerCase()=="tomorrow")
-  {
-	  return week[day+1];
-  }
-  return (grammar[utterance.toLowerCase()] || {}).day;
-}
-function getTime(utterance: string) {
-  return (grammar[utterance.toLowerCase()] || {}).time;
-}
-function yes(utterance: string) {
-  return utterance.toLowerCase()=="yes";
-}
-function no(utterance: string) {
-  return utterance.toLowerCase()=="no";
-}
-function yesOrNo(utterance: string){
-	if(no(utterance)){
+
+//Checking if all the names are done
+function is_last()
+{
+	if(index==fantasy_names.length)
+	{
 		return true;
 	}
-	else if(yes(utterance)){
-		return true;
-	}
-	else{
+	else
+	{
 		return false;
 	}
 }
@@ -126,22 +94,7 @@ const dmMachine = setup({
       context.spstRef.send({
         type: "LISTEN",
       }),
-	
-	"setPerson": assign(({ context }) => ({
-      person: getPerson( context.lastResult![0].utterance),
-    })),
-	"setDay": assign(({ context }) => ({
-      day: getDay( context.lastResult![0].utterance),
-    })),
-	"setTime": assign(({ context }) => ({
-      time: getTime( context.lastResult![0].utterance),
-    })),
-	"setWholeDay": assign(({ context }) => ({
-      time: "the whole day",
-    })),
-	
-	
-	  
+	"initialize": initialize(),
   },
 }).createMachine({
   context: ({ spawn }) => ({
@@ -168,7 +121,7 @@ const dmMachine = setup({
       on: {
         LISTEN_COMPLETE: [
           {
-            target: "CheckGrammar",
+            target: "Check",
             guard: ({ context }) => !!context.lastResult,
           },
           { target: ".NoInput" },
@@ -176,7 +129,7 @@ const dmMachine = setup({
       },
       states: {
         Prompt: {
-          entry: { type: "spst.speak", params: { utterance: `Hello` } },
+          entry: { type: "spst.speak", params: { utterance: `Speak the name to the left` } },
           on: { SPEAK_COMPLETE: "Ask" },
         },
         NoInput: {
@@ -204,20 +157,18 @@ const dmMachine = setup({
 		
       },
     },
-    CheckGrammar: {
+    Check: {
       entry: {
         type: "spst.speak",
         params: ({ context }) => ({
-          utterance: ` ${
-            isInGrammar(context.lastResult![0].utterance) ? "" : "I don't recognize what you said, but let's continue"
-          }.`,
+          utterance: `I heard: ${listen_fantasy(context.lastResult![0].utterance, context.lastResult![0].confidence)}`,
         }),
       },
       on: { SPEAK_COMPLETE: [
       {
-        target: "SelectPerson",
-        /*guard: ({ context }) =>
-          isInGrammar(context.lastResult![0].utterance),*/
+        target: "Done",
+        guard: ({ context }) =>
+        is_last(),
       },
       {
         target: "Greeting", // eller reprompt-state
@@ -230,521 +181,6 @@ const dmMachine = setup({
         CLICK: "Greeting",
       },
     },
-	
-	//Select person
-	SelectPerson: {
-      initial: "Prompt",
-      on: {
-        LISTEN_COMPLETE: [
-          {
-            target: "CheckPerson",
-            guard: ({ context }) => !!context.lastResult,
-          },
-          { target: ".NoInput" },
-        ],
-      },
-      states: {
-        Prompt: {
-          entry: { type: "spst.speak", params: { utterance: `Who do you want to see?` } },
-          on: { SPEAK_COMPLETE: "Ask" },
-        },
-        NoInput: {
-          entry: {
-            type: "spst.speak",
-            params: { utterance: `I can't hear you!` },
-          },
-          on: { SPEAK_COMPLETE: "Prompt" },
-        },
-        Ask: {
-          entry: { type: "spst.listen" },
-          on: {
-            RECOGNISED: {
-              actions: assign(({ event }) => {
-                return { lastResult: event.value };
-              }),
-            },
-            ASR_NOINPUT: {
-              actions: assign({ lastResult: null }),
-            },
-          },
-		  
-        },
-		
-      },
-    },
-    CheckPerson: {
-      entry: {
-        type: "spst.speak",
-        params: ({ context }) => ({
-          utterance: `${getPerson(context.lastResult![0].utterance) ? "Confirming" : "I could not understand"} ${context.lastResult![0].utterance}.`,
-        }),
-      },
-      on: { SPEAK_COMPLETE: [
-      {
-        target: "SelectDay",
-		actions: "setPerson", 
-        guard: ({ context }) =>
-          getPerson(context.lastResult![0].utterance),
-		
-      },
-      {
-        target: "SelectPerson", // eller reprompt-state
-      },
-    ], },
-    },
-	
-	
-	
-	//Select day
-	SelectDay: {
-      initial: "Prompt",
-      on: {
-        LISTEN_COMPLETE: [
-          {
-            target: "CheckDay",
-            guard: ({ context }) => !!context.lastResult,
-          },
-          { target: ".NoInput" },
-        ],
-      },
-      states: {
-        Prompt: {
-          entry: { type: "spst.speak", params: { utterance: `On which day do you want to make an appointment?` } },
-          on: { SPEAK_COMPLETE: "Ask" },
-        },
-        NoInput: {
-          entry: {
-            type: "spst.speak",
-            params: { utterance: `I can't hear you!` },
-          },
-          on: { SPEAK_COMPLETE: "Prompt" },
-        },
-        Ask: {
-          entry: { type: "spst.listen" },
-          on: {
-            RECOGNISED: {
-              actions: assign(({ event }) => {
-                return { lastResult: event.value };
-              }),
-            },
-            ASR_NOINPUT: {
-              actions: assign({ lastResult: null }),
-            },
-          },
-		  
-        },
-		
-      },
-    },
-    CheckDay: {
-      entry: {
-        type: "spst.speak",
-        params: ({ context }) => ({
-          utterance: `${getDay(context.lastResult![0].utterance) ? "Confirming" : "I could not understand"} ${context.lastResult![0].utterance}.`,
-        }),
-      },
-      on: { SPEAK_COMPLETE: [
-      {
-        target: "ChangeDay",
-		actions: "setDay", 
-        guard: ({ context }) =>
-          isInGrammar(context.lastResult![0].utterance),
-      },
-      {
-        target: "SelectDay", // looping back if failing
-      },
-    ], },
-    },
-	
-	
-	// Checking if they ar happy with that day
-	
-	ChangeDay: {
-      initial: "Prompt",
-      on: {
-        LISTEN_COMPLETE: [
-          {
-            target: "CheckChangeDay",
-            guard: ({ context }) => !!context.lastResult,
-          },
-          { target: ".NoInput" },
-        ],
-      },
-      states: {
-        Prompt: {
-          entry: { type: "spst.speak", params: ({ context })=>({ utterance: `You have picked ${context.day}. Is this OK?` }) },
-          on: { SPEAK_COMPLETE: "Ask" },
-        },
-        NoInput: {
-          entry: {
-            type: "spst.speak",
-            params: { utterance: `I can't hear you!` },
-          },
-          on: { SPEAK_COMPLETE: "Prompt" },
-        },
-        Ask: {
-          entry: { type: "spst.listen" },
-          on: {
-            RECOGNISED: {
-              actions: assign(({ event }) => {
-                return { lastResult: event.value };
-              }),
-            },
-            ASR_NOINPUT: {
-              actions: assign({ lastResult: null }),
-            },
-          },
-		  
-        },
-		
-      },
-    },
-    CheckChangeDay :{
-      entry: {
-        type: "spst.speak",
-        params: ({ context }) => ({
-          utterance: `${yesOrNo(context.lastResult![0].utterance) ? "OK!" : "Please answer yes or no!"}`,  
-        }),
-      },
-      on: { SPEAK_COMPLETE: [
-      {
-        target: "SelectWholeDay",
-		actions: "setWholeDay",
-        guard: ({ context }) =>
-          yes(context.lastResult![0].utterance),
-      },
-	  {
-        target: "SelectDay",
-        guard: ({ context }) =>
-          no(context.lastResult![0].utterance),
-      },
-      /*{
-        target: "SelectWholeDay", // looping back as a last option
-      },*/
-    ], 
-	},
-    },
-	
-	
-	
-	
-	
-	
-	
-	//Is it the whole day?
-	SelectWholeDay: {
-      initial: "Prompt",
-      on: {
-        LISTEN_COMPLETE: [
-          {
-            target: "CheckSelectWholeDay",
-            guard: ({ context }) => !!context.lastResult,
-          },
-          { target: ".NoInput" },
-        ],
-      },
-      states: {
-        Prompt: {
-          entry: { type: "spst.speak", params: { utterance: `Will the appointment last the whole day!` } },
-          on: { SPEAK_COMPLETE: "Ask" },
-        },
-        NoInput: {
-          entry: {
-            type: "spst.speak",
-            params: { utterance: `I can't hear you!` },
-          },
-          on: { SPEAK_COMPLETE: "Prompt" },
-        },
-        Ask: {
-          entry: { type: "spst.listen" },
-          on: {
-            RECOGNISED: {
-              actions: assign(({ event }) => {
-                return { lastResult: event.value };
-              }),
-            },
-            ASR_NOINPUT: {
-              actions: assign({ lastResult: null }),
-            },
-          },
-		  
-        },
-		
-      },
-    },
-    CheckSelectWholeDay: {
-      entry: {
-        type: "spst.speak",
-        params: ({ context }) => ({
-          utterance: `${yesOrNo(context.lastResult![0].utterance) ? "OK!" : "Please answer yes or no!"}`, 
-        }),
-      },
-      on: { SPEAK_COMPLETE: [
-      {
-        target: "ConfirmDay",
-		actions: "setWholeDay",
-        guard: ({ context }) =>
-          yes(context.lastResult![0].utterance),
-      },
-	  {
-        target: "SelectTime",
-        guard: ({ context }) =>
-          no(context.lastResult![0].utterance),
-      },
-      {
-        target: "SelectWholeDay", // looping back as a last option
-      },
-    ], 
-	},
-    },
-	
-	
-	
-	//Select time, if not whole day
-	SelectTime: {
-      initial: "Prompt",
-      on: {
-        LISTEN_COMPLETE: [
-          {
-            target: "CheckTime",
-            guard: ({ context }) => !!context.lastResult,
-          },
-          { target: ".NoInput" },
-        ],
-      },
-      states: {
-        Prompt: {
-          entry: { type: "spst.speak", params: { utterance: `At what time do you want to have the appointment?` } },
-          on: { SPEAK_COMPLETE: "Ask" },
-        },
-        NoInput: {
-          entry: {
-            type: "spst.speak",
-            params: { utterance: `I can't hear you!` },
-          },
-          on: { SPEAK_COMPLETE: "Prompt" },
-        },
-        Ask: {
-          entry: { type: "spst.listen" },
-          on: {
-            RECOGNISED: {
-              actions: assign(({ event }) => {
-                return { lastResult: event.value };
-              }),
-            },
-            ASR_NOINPUT: {
-              actions: assign({ lastResult: null }),
-            },
-          },
-		  
-        },
-		
-      },
-    },
-    CheckTime: {
-      entry: {
-        type: "spst.speak",
-        params: ({ context }) => ({
-          utterance: `${getTime(context.lastResult![0].utterance) ? "Confirming" : "I could not understand"} ${context.lastResult![0].utterance}.`,
-        }),
-      },
-      on: { SPEAK_COMPLETE: [
-      {
-        target: "ConfirmTime",
-		actions: "setTime",
-        guard: ({ context }) =>
-          isInGrammar(context.lastResult![0].utterance),
-      },
-      {
-        target: "SelectTime", // eller reprompt-state
-      },
-    ], 
-	},
-    },
-	
-	
-	// Confirm whole day
-	ConfirmDay: {
-      initial: "Prompt",
-      on: {
-        LISTEN_COMPLETE: [
-          {
-            target: "CheckConfirmDay",
-            guard: ({ context }) => !!context.lastResult,
-          },
-          { target: ".NoInput" },
-        ],
-      },
-      states: {
-        Prompt: {
-          entry: { type: "spst.speak", params: ({ context })=>({ utterance: `Confirm apointment with ${context.person} on ${context.day} the whole day. Is this correct? ` }) },
-          on: { SPEAK_COMPLETE: "Ask" },
-        },
-        NoInput: {
-          entry: {
-            type: "spst.speak",
-            params: { utterance: `I can't hear you!` },
-          },
-          on: { SPEAK_COMPLETE: "Prompt" },
-        },
-        Ask: {
-          entry: { type: "spst.listen" },
-          on: {
-            RECOGNISED: {
-              actions: assign(({ event }) => {
-                return { lastResult: event.value };
-              }),
-            },
-            ASR_NOINPUT: {
-              actions: assign({ lastResult: null }),
-            },
-          },
-		  
-        },
-		
-      },
-    },
-    CheckConfirmDay :{
-      entry: {
-        type: "spst.speak",
-        params: ({ context }) => ({
-          utterance: `${yesOrNo(context.lastResult![0].utterance) ? "OK!" : "Please answer yes or no!"}`,  
-        }),
-      },
-      on: { SPEAK_COMPLETE: [
-      {
-        target: "RepeatInfo",
-		actions: "setWholeDay",
-        guard: ({ context }) =>
-          yes(context.lastResult![0].utterance),
-      },
-	  {
-        target: "SelectTime",
-        guard: ({ context }) =>
-          no(context.lastResult![0].utterance),
-      },
-      {
-        target: "SelectWholeDay", // looping back as a last option
-      },
-    ], 
-	},
-    },
-	
-	
-	
-	
-	// Confirm time at day
-	
-	ConfirmTime: {
-      initial: "Prompt",
-      on: {
-        LISTEN_COMPLETE: [
-          {
-            target: "CheckConfirmTime",
-            guard: ({ context }) => !!context.lastResult,
-          },
-          { target: ".NoInput" },
-        ],
-      },
-      states: {
-        Prompt: {
-          entry: { type: "spst.speak", params: ({ context })=>( { utterance: `Confirm appointment with ${context.person} on ${context.day} at ${context.time}. Is this correct? ` } )},
-          on: { SPEAK_COMPLETE: "Ask" },
-        },
-        NoInput: {
-          entry: {
-            type: "spst.speak",
-            params: { utterance: `I can't hear you!` },
-          },
-          on: { SPEAK_COMPLETE: "Prompt" },
-        },
-        Ask: {
-          entry: { type: "spst.listen" },
-          on: {
-            RECOGNISED: {
-              actions: assign(({ event }) => {
-                return { lastResult: event.value };
-              }),
-            },
-            ASR_NOINPUT: {
-              actions: assign({ lastResult: null }),
-            },
-          },
-		  
-        },
-		
-      },
-    },
-    CheckConfirmTime: {
-      entry: {
-        type: "spst.speak",
-        params: ({ context }) => ({
-          utterance: `${yesOrNo(context.lastResult![0].utterance) ? "OK!" : "Please answer yes or no!"}`, 
-        }),
-      },
-      on: { SPEAK_COMPLETE: [
-      {
-        target: "RepeatInfo",
-        guard: ({ context }) =>
-          yes(context.lastResult![0].utterance),
-      },
-	  {
-        target: "Greeting",
-        guard: ({ context }) =>
-          no(context.lastResult![0].utterance),
-      },
-      {
-        target: "CheckConfirmTime", // looping back as a last option
-      },
-    ],
-	},
-    },
-	
-	
-		// Repeat the selected info back to the user
-	
-	RepeatInfo: {
-      initial: "Prompt",
-      on: {
-        LISTEN_COMPLETE: [
-          {
-            target: "Done",
-            guard: ({ context }) => !!context.lastResult,
-          },
-          { target: ".NoInput" },
-        ],
-      },
-      states: {
-        Prompt: {
-          entry: { type: "spst.speak", params: ({ context }) => ( { utterance: `You have made an appointment with ${context.person}, on ${context.day}, ${context.time}` } )},
-          on: { SPEAK_COMPLETE: "#DM.Done" },
-        },
-        NoInput: {
-          entry: {
-            type: "spst.speak",
-            params: { utterance: `I can't hear you!` },
-          },
-          on: { SPEAK_COMPLETE: "Prompt" },
-        },
-        Ask: {
-          entry: { type: "spst.listen" },
-          on: {
-            RECOGNISED: {
-              actions: assign(({ event }) => {
-                return { lastResult: event.value };
-              }),
-            },
-            ASR_NOINPUT: {
-              actions: assign({ lastResult: null }),
-            },
-          },
-		  
-        },
-		
-      },
-    },
-    
-	
   },
 });
 
